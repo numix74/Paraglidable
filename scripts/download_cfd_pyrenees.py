@@ -12,7 +12,7 @@ Ce script :
 5. Filtre par zone géographique (Pyrénées)
 6. Sauvegarde en pickle/CSV
 
-Zone Pyrénées : 42.0° - 44.0° N, -2.0° - 4.0° E
+Zone Pyrénées (France + Espagne) : 41.5° - 44.0° N, -2.0° - 4.0° E
 
 Usage:
     python download_cfd_pyrenees.py --start-year 2015 --end-year 2024
@@ -45,12 +45,15 @@ logger = logging.getLogger(__name__)
 # Configuration
 # =============================================================================
 
-# Zone géographique Pyrénées
+# Zone géographique Pyrénées (France + Espagne)
+# - Nord : Piémont français (Toulouse, Pau, Perpignan)
+# - Sud : Versant espagnol (Aragon, Catalogne, Navarre)
+# - Spots espagnols inclus : Àger, Organyà, Castejón de Sos, Liri, etc.
 BBOX_PYRENEES = {
-    'min_lat': 42.0,
-    'max_lat': 44.0,
-    'min_lon': -2.0,
-    'max_lon': 4.0  # Étendu jusqu'à la Méditerranée
+    'min_lat': 41.5,  # Versant espagnol (Catalogne/Aragon)
+    'max_lat': 44.0,  # Piémont français
+    'min_lon': -2.0,  # Pays Basque
+    'max_lon': 4.0    # Méditerranée
 }
 
 # Répertoires
