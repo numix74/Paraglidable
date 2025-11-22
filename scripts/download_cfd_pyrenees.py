@@ -15,8 +15,17 @@ Ce script :
 Zone Pyrénées (France + Espagne) : 41.5° - 44.0° N, -2.0° - 4.0° E
 
 Usage:
-    python download_cfd_pyrenees.py --start-year 2015 --end-year 2024
-    python download_cfd_pyrenees.py --download-igc  # Télécharge aussi les fichiers IGC
+    # Un seul mois (test rapide)
+    python download_cfd_pyrenees.py --start-year 2024 --end-year 2024 --start-month 6 --end-month 6
+
+    # Une année complète
+    python download_cfd_pyrenees.py --start-year 2024 --end-year 2024
+
+    # Période personnalisée (mars 2023 à septembre 2024)
+    python download_cfd_pyrenees.py --start-year 2023 --end-year 2024 --start-month 3 --end-month 9
+
+    # Toutes les données depuis 2015 avec téléchargement et parsing IGC
+    python download_cfd_pyrenees.py --start-year 2015 --end-year 2024 --download-igc --parse-igc
 """
 
 import os
@@ -740,6 +749,14 @@ def main():
         help="Année de fin (défaut: 2024)"
     )
     parser.add_argument(
+        '--start-month', type=int, default=1,
+        help="Mois de début (défaut: 1)"
+    )
+    parser.add_argument(
+        '--end-month', type=int, default=12,
+        help="Mois de fin (défaut: 12)"
+    )
+    parser.add_argument(
         '--download-igc', action='store_true',
         help="Télécharger aussi les fichiers IGC"
     )
@@ -774,7 +791,25 @@ def main():
     logger.info("=" * 60)
 
     for year in range(args.start_year, args.end_year + 1):
-        for month in range(1, 13):
+        # Déterminer les mois à traiter pour cette année
+        if year == args.start_year and year == args.end_year:
+            # Même année: du mois de début au mois de fin
+            month_start = args.start_month
+            month_end = args.end_month
+        elif year == args.start_year:
+            # Première année: du mois de début jusqu'à décembre
+            month_start = args.start_month
+            month_end = 12
+        elif year == args.end_year:
+            # Dernière année: de janvier au mois de fin
+            month_start = 1
+            month_end = args.end_month
+        else:
+            # Années intermédiaires: tous les mois
+            month_start = 1
+            month_end = 12
+
+        for month in range(month_start, month_end + 1):
             # Vérifier le cache
             cache_file = CACHE_DIR / f"cfd_{year}_{month:02d}.xml"
 
