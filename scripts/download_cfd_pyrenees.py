@@ -185,8 +185,8 @@ class FlightComplete:
 # Fonctions de téléchargement
 # =============================================================================
 
-def download_cfd_month(year: int, month: int) -> Optional[str]:
-    """Télécharge les vols CFD pour un mois donné"""
+def download_cfd_month(year: int, month: int, max_retries: int = 3) -> Optional[str]:
+    """Télécharge les vols CFD pour un mois donné avec retry automatique"""
 
     # Calculer les timestamps
     start_date = datetime(year, month, 1)
@@ -201,17 +201,30 @@ def download_cfd_month(year: int, month: int) -> Optional[str]:
     url = f"{CFD_API_URL}?from={from_ts}&to={to_ts}"
     logger.info(f"Téléchargement {year}-{month:02d}: {url}")
 
-    try:
-        response = requests.get(
-            url,
-            headers={'User-Agent': USER_AGENT},
-            timeout=60
-        )
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException as e:
-        logger.error(f"Erreur téléchargement {year}-{month:02d}: {e}")
-        return None
+    # Retry avec backoff exponentiel
+    for attempt in range(max_retries):
+        try:
+            # Timeout plus long pour les mois chargés (mars-septembre)
+            timeout = 180 if 3 <= month <= 9 else 120
+
+            response = requests.get(
+                url,
+                headers={'User-Agent': USER_AGENT},
+                timeout=timeout
+            )
+            response.raise_for_status()
+            return response.text
+
+        except requests.RequestException as e:
+            wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
+            if attempt < max_retries - 1:
+                logger.warning(f"Timeout {year}-{month:02d}, retry {attempt+1}/{max_retries} dans {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Échec téléchargement {year}-{month:02d} après {max_retries} tentatives: {e}")
+                return None
+
+    return None
 
 
 def parse_cfd_xml(xml_content: str) -> List[FlightMetadata]:
