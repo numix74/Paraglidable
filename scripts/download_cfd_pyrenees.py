@@ -34,6 +34,14 @@ from dataclasses import dataclass, asdict
 from typing import List, Optional, Dict, Any
 import logging
 
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+    print("Warning: pandas non installé. Export Parquet désactivé.")
+    print("Installer avec: pip install pandas pyarrow")
+
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
@@ -575,6 +583,146 @@ def save_flights_csv(flights: List[FlightComplete], output_path: Path):
     logger.info(f"Sauvegardé {len(flights)} vols dans {output_path}")
 
 
+def save_flights_parquet(flights: List[FlightComplete], output_path: Path):
+    """Sauvegarde les vols en Parquet (format optimisé pour l'analyse)"""
+
+    if not HAS_PANDAS:
+        logger.warning("pandas non installé, export Parquet ignoré")
+        return
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Construire les données en liste de dictionnaires
+    records = []
+    for flight in flights:
+        m = flight.metadata
+        i = flight.igc_data
+
+        record = {
+            # Identifiants
+            'flight_id': m.nac_flight_id,
+            'civl_id': m.civl_id,
+
+            # Date et heure
+            'date': m.takeoff_datetime.strftime('%Y-%m-%d'),
+            'takeoff_time': m.takeoff_datetime.strftime('%H:%M:%S'),
+            'landing_time': m.landing_datetime.strftime('%H:%M:%S'),
+            'takeoff_timestamp': m.takeoff_timestamp,
+            'landing_timestamp': m.landing_timestamp,
+
+            # Pilote
+            'pilot_first_name': m.pilot_first_name,
+            'pilot_last_name': m.pilot_last_name,
+            'pilot_nation': m.pilot_nation,
+            'pilot_gender': m.pilot_gender,
+
+            # Lieu (métadonnées)
+            'takeoff_name': m.takeoff_name,
+            'takeoff_country': m.takeoff_country,
+
+            # Matériel
+            'glider': m.glider,
+            'glider_cat': m.glider_cat,
+
+            # Durée
+            'duration_hours': round(m.duration_hours, 4),
+
+            # URLs
+            'igc_url': m.igc_url,
+            'flight_url': m.flight_url,
+        }
+
+        # Données IGC (si disponibles)
+        if i:
+            record.update({
+                # Position décollage
+                'takeoff_lat': i.takeoff_lat,
+                'takeoff_lon': i.takeoff_lon,
+                'takeoff_alt': i.takeoff_alt,
+
+                # Position atterrissage
+                'landing_lat': i.landing_lat,
+                'landing_lon': i.landing_lon,
+                'landing_alt': i.landing_alt,
+
+                # Altitudes
+                'max_altitude': i.max_altitude,
+                'min_altitude': i.min_altitude,
+                'altitude_gain': i.altitude_gain,
+
+                # Vario
+                'mean_positive_vario': i.mean_positive_vario,
+                'max_vario': i.max_vario,
+                'min_vario': i.min_vario,
+
+                # Vitesse
+                'mean_ground_speed': i.mean_ground_speed,
+                'max_ground_speed': i.max_ground_speed,
+
+                # Thermiques
+                'thermal_count': i.thermal_count,
+                'thermal_percentage': i.thermal_percentage,
+
+                # Distance
+                'straight_distance_km': i.straight_distance_km,
+
+                # Stats
+                'n_fixes': i.n_fixes,
+
+                # Score calculé
+                'score': round(flight.score, 2),
+
+                # Flag
+                'has_igc_data': True,
+            })
+        else:
+            record.update({
+                'takeoff_lat': None,
+                'takeoff_lon': None,
+                'takeoff_alt': None,
+                'landing_lat': None,
+                'landing_lon': None,
+                'landing_alt': None,
+                'max_altitude': None,
+                'min_altitude': None,
+                'altitude_gain': None,
+                'mean_positive_vario': None,
+                'max_vario': None,
+                'min_vario': None,
+                'mean_ground_speed': None,
+                'max_ground_speed': None,
+                'thermal_count': None,
+                'thermal_percentage': None,
+                'straight_distance_km': None,
+                'n_fixes': None,
+                'score': None,
+                'has_igc_data': False,
+            })
+
+        records.append(record)
+
+    # Créer le DataFrame
+    df = pd.DataFrame(records)
+
+    # Convertir les types pour optimiser le stockage
+    df['date'] = pd.to_datetime(df['date'])
+    df['flight_id'] = df['flight_id'].astype(str)
+
+    # Colonnes numériques optionnelles (avec NaN possibles)
+    int_cols = ['takeoff_alt', 'landing_alt', 'max_altitude', 'min_altitude',
+                'altitude_gain', 'thermal_count', 'n_fixes']
+    for col in int_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')
+
+    # Sauvegarder en Parquet
+    df.to_parquet(output_path, engine='pyarrow', index=False, compression='snappy')
+
+    logger.info(f"Sauvegardé {len(flights)} vols dans {output_path}")
+    logger.info(f"  Colonnes: {list(df.columns)}")
+    logger.info(f"  Taille: {output_path.stat().st_size / 1024:.1f} KB")
+
+
 # =============================================================================
 # Main
 # =============================================================================
@@ -729,6 +877,10 @@ def main():
         complete_flights,
         args.output_dir / "all_flights.csv"
     )
+    save_flights_parquet(
+        complete_flights,
+        args.output_dir / "all_flights.parquet"
+    )
 
     # Sauvegarder les vols Pyrénées
     save_flights_pickle(
@@ -738,6 +890,10 @@ def main():
     save_flights_csv(
         pyrenees_flights,
         args.output_dir / "pyrenees_flights.csv"
+    )
+    save_flights_parquet(
+        pyrenees_flights,
+        args.output_dir / "pyrenees_flights.parquet"
     )
 
     # Statistiques finales
